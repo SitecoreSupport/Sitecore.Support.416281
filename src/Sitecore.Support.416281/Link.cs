@@ -1,4 +1,4 @@
-﻿namespace Sitecore.Shell.Applications.ContentEditor
+﻿namespace Sitecore.Support
 {
     using Sitecore;
     using Sitecore.Data;
@@ -6,14 +6,16 @@
     using Sitecore.Diagnostics;
     using Sitecore.Globalization;
     using Sitecore.Links;
+    using Sitecore.Shell.Applications.ContentEditor;
     using Sitecore.Text;
     using Sitecore.Web;
+    using Sitecore.Web.UI.HtmlControls;
     using Sitecore.Web.UI.Sheer;
     using System;
     using System.Collections.Specialized;
     using System.Web.UI;
 
-    public class Link : LinkBase
+    public class Link : Edit, IContentField
     {
         private bool linkBroken;
 
@@ -43,44 +45,46 @@
             }
         }
 
+
+
         private void Follow()
         {
             Sitecore.Shell.Applications.ContentEditor.XmlValue xmlValue = this.XmlValue;
-            string attribute = xmlValue.GetAttribute("linktype");
-            if (attribute != null)
+            switch (xmlValue.GetAttribute("linktype"))
             {
-                if ((attribute != "internal") && (attribute != "media"))
-                {
-                    if ((attribute != "external") && (attribute != "mailto"))
+                case null:
+                    return;
+
+                case "internal":
+                case "media":
                     {
-                        if (attribute == "anchor")
+                        string attribute = xmlValue.GetAttribute("id");
+                        if (!string.IsNullOrEmpty(attribute))
                         {
-                            SheerResponse.Alert(Translate.Text("You cannot follow an Anchor link."), new string[0]);
-                            return;
-                        }
-                        if (attribute == "javascript")
-                        {
-                            SheerResponse.Alert(Translate.Text("You cannot follow a Javascript link."), new string[0]);
+                            Sitecore.Context.ClientPage.SendMessage(this, "item:load(id=" + attribute + ")");
                         }
                         return;
                     }
-                }
-                else
-                {
-                    string str2 = xmlValue.GetAttribute("id");
-                    if (!string.IsNullOrEmpty(str2))
+                case "external":
+                case "mailto":
                     {
-                        Sitecore.Context.ClientPage.SendMessage(this, "item:load(id=" + str2 + ")");
+                        string str3 = xmlValue.GetAttribute("url");
+                        if (!string.IsNullOrEmpty(str3))
+                        {
+                            SheerResponse.Eval("window.open('" + str3 + "', '_blank')");
+                        }
+                        return;
                     }
+                case "anchor":
+                    SheerResponse.Alert(Translate.Text("You cannot follow an Anchor link."), new string[0]);
                     return;
-                }
-                string str3 = xmlValue.GetAttribute("url");
-                if (!string.IsNullOrEmpty(str3))
-                {
-                    SheerResponse.Eval("window.open('" + str3 + "', '_blank')");
-                }
+
+                case "javascript":
+                    SheerResponse.Alert(Translate.Text("You cannot follow a Javascript link."), new string[0]);
+                    break;
             }
         }
+
 
         private string GetLinkPath()
         {
@@ -92,36 +96,37 @@
             {
                 item = Client.ContentDatabase.GetItem(new ID(attribute));
             }
-            if (item != null)
+            if (item == null)
             {
-                if (this.Value.EndsWith("." + "aspx"))
+                return xmlValue.GetAttribute("url");
+            }
+            if (this.Value.EndsWith(".aspx"))
+            {
+                if (item.Paths.Path.StartsWith("/sitecore/content", StringComparison.InvariantCulture))
                 {
-                    if (item.Paths.Path.StartsWith("/sitecore/content", StringComparison.InvariantCulture))
+                    str2 = item.Paths.Path.Substring("/sitecore/content".Length);
+                    if (LinkManager.AddAspxExtension)
                     {
-                        str2 = item.Paths.Path.Substring("/sitecore/content".Length);
-                        if (LinkManager.AddAspxExtension)
-                        {
-                            str2 = str2 + ("." + "aspx");
-                        }
-                        return str2;
-                    }
-                    if (item.Paths.Path.StartsWith("/sitecore/media library", StringComparison.InvariantCulture))
-                    {
-                        str2 = item.Paths.Path + ("." + "aspx");
+                        str2 = str2 + ".aspx";
                     }
                     return str2;
                 }
                 if (item.Paths.Path.StartsWith("/sitecore/media library", StringComparison.InvariantCulture))
                 {
-                    str2 = item.Paths.Path.Substring("/sitecore/media library".Length);
+                    str2 = item.Paths.Path + ".aspx";
                 }
                 return str2;
             }
-            return xmlValue.GetAttribute("url");
+            if (item.Paths.Path.StartsWith("/sitecore/media library", StringComparison.InvariantCulture))
+            {
+                str2 = item.Paths.Path.Substring("/sitecore/media library".Length);
+            }
+            return str2;
         }
 
-        public override string GetValue() =>
-            this.XmlValue.ToString();
+
+        public string GetValue() =>
+        this.XmlValue.ToString();
 
         public override void HandleMessage(Message message)
         {
@@ -132,46 +137,43 @@
                 switch (message.Name)
                 {
                     case "contentlink:internallink":
-                        {
-                            NameValueCollection additionalParameters = new NameValueCollection();
-                            additionalParameters.Add("width", "685");
-                            this.Insert("/sitecore/shell/Applications/Dialogs/Internal link.aspx", additionalParameters);
-                            return;
-                        }
+                        this.Insert("/sitecore/shell/Applications/Dialogs/Internal link.aspx");
+                        return;
+
                     case "contentlink:media":
                         {
-                            NameValueCollection values3 = new NameValueCollection();
-                            values3.Add("umwn", "1");
-                            NameValueCollection values = values3;
-                            this.Insert("/sitecore/shell/Applications/Dialogs/Media link.aspx", values);
+                            NameValueCollection values = new NameValueCollection();
+                            values.Add("umwn", "1");
+                            NameValueCollection additionalParameters = values;
+                            this.Insert("/sitecore/shell/Applications/Dialogs/Media link.aspx", additionalParameters);
                             return;
                         }
                     case "contentlink:externallink":
                         {
-                            NameValueCollection values4 = new NameValueCollection();
-                            values4.Add("height", "425");
-                            this.Insert("/sitecore/shell/Applications/Dialogs/External link.aspx", values4);
+                            NameValueCollection values3 = new NameValueCollection();
+                            values3.Add("height", "285");
+                            this.Insert("/sitecore/shell/Applications/Dialogs/External link.aspx", values3);
                             return;
                         }
                     case "contentlink:anchorlink":
                         {
-                            NameValueCollection values5 = new NameValueCollection();
-                            values5.Add("height", "335");
-                            this.Insert("/sitecore/shell/Applications/Dialogs/Anchor link.aspx", values5);
+                            NameValueCollection values4 = new NameValueCollection();
+                            values4.Add("height", "230");
+                            this.Insert("/sitecore/shell/Applications/Dialogs/Anchor link.aspx", values4);
                             return;
                         }
                     case "contentlink:mailto":
                         {
-                            NameValueCollection values6 = new NameValueCollection();
-                            values6.Add("height", "335");
-                            this.Insert("/sitecore/shell/Applications/Dialogs/Mail link.aspx", values6);
+                            NameValueCollection values5 = new NameValueCollection();
+                            values5.Add("height", "260");
+                            this.Insert("/sitecore/shell/Applications/Dialogs/Mail link.aspx", values5);
                             return;
                         }
                     case "contentlink:javascript":
                         {
-                            NameValueCollection values7 = new NameValueCollection();
-                            values7.Add("height", "418");
-                            this.Insert("/sitecore/shell/Applications/Dialogs/Javascript link.aspx", values7);
+                            NameValueCollection values6 = new NameValueCollection();
+                            values6.Add("height", "325");
+                            this.Insert("/sitecore/shell/Applications/Dialogs/Javascript link.aspx", values6);
                             return;
                         }
                     case "contentlink:follow":
@@ -180,10 +182,15 @@
 
                     case "contentlink:clear":
                         this.ClearLink();
+                        break;
+
+                    default:
                         return;
                 }
             }
         }
+
+
 
         protected void Insert(string url)
         {
@@ -195,12 +202,13 @@
         {
             Assert.ArgumentNotNull(url, "url");
             Assert.ArgumentNotNull(additionalParameters, "additionalParameters");
-            NameValueCollection values2 = new NameValueCollection();
-            values2.Add("url", url);
-            values2.Add(additionalParameters);
-            NameValueCollection parameters = values2;
+            NameValueCollection values = new NameValueCollection();
+            values.Add("url", url);
+            values.Add(additionalParameters);
+            NameValueCollection parameters = values;
             Sitecore.Context.ClientPage.Start(this, "InsertLink", parameters);
         }
+
 
         protected void InsertLink(ClientPipelineArgs args)
         {
@@ -219,9 +227,11 @@
             else
             {
                 UrlString urlString = new UrlString(args.Parameters["url"]);
+                UrlHandle handle = new UrlHandle();
                 string width = args.Parameters["width"];
                 string height = args.Parameters["height"];
-                this.GetHandle().Add(urlString);
+                handle["va"] = this.XmlValue.ToString();
+                handle.Add(urlString);
                 urlString.Append("ro", this.Source);
                 urlString.Add("la", this.ItemLanguage);
                 urlString.Append("sc_content", WebUtil.GetQueryString("sc_content"));
@@ -229,6 +239,7 @@
                 args.WaitForPostBack();
             }
         }
+
 
         protected override bool LoadPostData(string value)
         {
@@ -250,48 +261,49 @@
                 {
                     xmlValue.SetAttribute("linktype", (this.Value.IndexOf("://", StringComparison.InvariantCulture) >= 0) ? "external" : "internal");
                 }
-                string str2 = string.Empty;
+                string str = string.Empty;
                 if (xmlValue.GetAttribute("linktype") == "internal")
                 {
                     string path = string.Empty;
-                    if (this.Value.EndsWith("." + "aspx"))
+                    if (this.Value.EndsWith(".aspx"))
                     {
                         if (this.Value.StartsWith("/sitecore/media library"))
                         {
-                            path = this.Value.Remove(this.Value.Length - ("." + "aspx").Length);
+                            path = this.Value.Remove(this.Value.Length - ".aspx".Length);
                         }
                         else
                         {
-                            path = "/sitecore/content" + this.Value.Remove(this.Value.Length - ("." + "aspx").Length);
+                            path = "/sitecore/content" + this.Value.Remove(this.Value.Length - ".aspx".Length);
                         }
                     }
                     Item item = Client.ContentDatabase.GetItem(path);
                     if (item != null)
                     {
-                        str2 = item.ID.ToString();
+                        str = item.ID.ToString();
                     }
                 }
                 else if (xmlValue.GetAttribute("linktype") == "media")
                 {
-                    string str4 = "/sitecore/media library" + this.Value;
-                    Item item2 = Client.ContentDatabase.GetItem(str4);
+                    string str3 = "/sitecore/media library" + this.Value;
+                    Item item2 = Client.ContentDatabase.GetItem(str3);
                     if (item2 != null)
                     {
-                        str2 = item2.ID.ToString();
+                        str = item2.ID.ToString();
                     }
                 }
                 else
                 {
                     xmlValue.SetAttribute("url", this.Value);
                 }
-                if (!string.IsNullOrEmpty(str2))
+                if (!string.IsNullOrEmpty(str))
                 {
-                    xmlValue.SetAttribute("id", str2);
+                    xmlValue.SetAttribute("id", str);
                 }
                 this.XmlValue = xmlValue;
             }
             return flag;
         }
+
 
         protected override void OnPreRender(EventArgs e)
         {
@@ -319,37 +331,9 @@
             if (!string.IsNullOrEmpty(attribute))
             {
                 string str3 = string.Empty;
-                string str6 = attribute;
-                if (str6 != null)
+                switch (attribute)
                 {
-                    if (str6 == "internal")
-                    {
-                        str3 = this.XmlValue.GetAttribute("id");
-                        if (!string.IsNullOrEmpty(str3) && Sitecore.Data.ID.IsID(str3))
-                        {
-                            Item item = Client.ContentDatabase.GetItem(new ID(str3));
-                            if (item == null)
-                            {
-                                this.linkBroken = true;
-                                str = str3;
-                            }
-                            else
-                            {
-                                string path = item.Paths.Path;
-                                if (path.StartsWith("/sitecore/content", StringComparison.InvariantCulture))
-                                {
-                                    path = path.Substring("/sitecore/content".Length);
-                                }
-                                if (LinkManager.AddAspxExtension)
-                                {
-                                    path = path + ("." + "aspx");
-                                }
-                                str = path;
-                            }
-                        }
-                    }
-                    else if (str6 == "media")
-                    {
+                    case "internal":
                         str3 = this.XmlValue.GetAttribute("id");
                         if (!string.IsNullOrEmpty(str3) && Sitecore.Data.ID.IsID(str3))
                         {
@@ -361,7 +345,35 @@
                             }
                             else
                             {
-                                string str5 = item2.Paths.Path;
+                                string path = item2.Paths.Path;
+                                if (path.StartsWith("/sitecore/content", StringComparison.InvariantCulture))
+                                {
+                                    path = path.Substring("/sitecore/content".Length);
+                                }
+                                if (LinkManager.AddAspxExtension)
+                                {
+                                    path = path + ".aspx";
+                                }
+                                str = path;
+                            }
+                            break;
+                        }
+                        this.ClearLink();
+                        return;
+
+                    case "media":
+                        str3 = this.XmlValue.GetAttribute("id");
+                        if (!string.IsNullOrEmpty(str3) && Sitecore.Data.ID.IsID(str3))
+                        {
+                            Item item = Client.ContentDatabase.GetItem(new ID(str3));
+                            if (item == null)
+                            {
+                                this.linkBroken = true;
+                                str = str3;
+                            }
+                            else
+                            {
+                                string str5 = item.Paths.Path;
                                 if (str5.StartsWith("/sitecore/media library", StringComparison.InvariantCulture))
                                 {
                                     str5 = str5.Substring("/sitecore/media library".Length);
@@ -369,7 +381,7 @@
                                 str = str5;
                             }
                         }
-                    }
+                        break;
                 }
             }
             if (str != "")
@@ -382,11 +394,46 @@
             }
         }
 
-        public override void SetValue(string value)
+
+
+        public void SetValue(string value)
         {
             Assert.ArgumentNotNull(value, "value");
             this.XmlValue = new Sitecore.Shell.Applications.ContentEditor.XmlValue(value, "link");
             this.SetValue();
+        }
+
+        public string ItemLanguage
+        {
+            get
+            {
+                return
+               base.GetViewStateString("ItemLanguage");
+            }
+            set
+            {
+                Assert.ArgumentNotNull(value, "value");
+                base.SetViewStateString("ItemLanguage", value);
+            }
+        }
+
+        public string Source
+        {
+            get
+            {
+                return
+              base.GetViewStateString("Source");
+            }
+            set
+            {
+                Assert.ArgumentNotNull(value, "value");
+                string str = MainUtil.UnmapPath(value);
+                if (str.EndsWith("/", StringComparison.InvariantCulture))
+                {
+                    str = str.Substring(0, str.Length - 1);
+                }
+                base.SetViewStateString("Source", str);
+            }
         }
 
         private Sitecore.Shell.Applications.ContentEditor.XmlValue XmlValue
